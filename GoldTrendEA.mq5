@@ -1,1 +1,203 @@
-//+------------------------------------------------------------------+\n//|                                              GoldTrendEA.mq5     |\n//|                          XAU/USD Day Trading with BB + RSI       |\n//|                                    Created 2026                  |\n//+------------------------------------------------------------------+\n#property copyright "GoldTrendEA"\n#property link      "https://github.com/pornpichit-ch/EABoT"\n#property version   "1.00"\n#property strict\n\n//--- Input parameters\ninput double LotSize = 0.01;           // Lot size per order\ninput int MaxOpenTrades = 3;           // Maximum open trades\ninput int StopLoss = 50;               // Stop Loss in pips\ninput int TakeProfit = 50;             // Take Profit in pips\n\n// Bollinger Bands settings\ninput int BBPeriod = 20;               // Bollinger Bands period\ninput double BBDeviation = 2.0;        // Bollinger Bands deviation\n\n// RSI settings\ninput int RSIPeriod = 14;              // RSI period\ninput double RSIOverbought = 70;       // RSI Overbought level\ninput double RSIOversold = 30;         // RSI Oversold level\n\n//--- Global variables\nint totalOrders = 0;\ndatetime lastTradeTime = 0;\nstring eaComment = "GoldTrendEA";\n\n//+------------------------------------------------------------------+\n//| Expert initialization function                                   |\n//+------------------------------------------------------------------+\nint OnInit()\n{\n    Print("===== GoldTrendEA Initialized =====");\n    Print("Symbol: ", Symbol());\n    Print("Lot Size: ", LotSize);\n    Print("Max Open Trades: ", MaxOpenTrades);\n    Print("Stop Loss: ", StopLoss, " pips");\n    Print("Take Profit: ", TakeProfit, " pips");\n    Print("BB Period: ", BBPeriod, " | Deviation: ", BBDeviation);\n    Print("RSI Period: ", RSIPeriod, " | Overbought: ", RSIOverbought, " | Oversold: ", RSIOversold);\n    \n    return(INIT_SUCCEEDED);\n}\n\n//+------------------------------------------------------------------+\n//| Expert deinitialization function                                 |\n//+------------------------------------------------------------------+\nvod OnDeinit(const int reason)\n{\n    Print("===== GoldTrendEA Deinitialized =====");\n}\n\n//+------------------------------------------------------------------+\n//| Expert tick function                                             |\n//+------------------------------------------------------------------+\nvoid OnTick()\n{\n    // Count open trades\n    CountOpenTrades();\n    \n    // Check if we can open new trades\n    if(totalOrders >= MaxOpenTrades)\n        return;\n    \n    // Get indicator values\n    double upperBand = iBands(Symbol(), PERIOD_CURRENT, BBPeriod, 0, BBDeviation, PRICE_CLOSE, 1, 0);\n    double middleBand = iBands(Symbol(), PERIOD_CURRENT, BBPeriod, 0, BBDeviation, PRICE_CLOSE, 0, 0);\n    double lowerBand = iBands(Symbol(), PERIOD_CURRENT, BBPeriod, 0, BBDeviation, PRICE_CLOSE, 2, 0);\n    \n    double rsiValue = iRSI(Symbol(), PERIOD_CURRENT, RSIPeriod, PRICE_CLOSE, 0);\n    \n    double currentPrice = Close[0];\n    \n    // Buy Signal: Price touches lower BB AND RSI < Oversold\n    if(currentPrice <= lowerBand && rsiValue < RSIOversold)\n    {\n        if(CountBuyOrders() < 1)\n        {\n            OpenBuyOrder();\n        }\n    }\n    \n    // Sell Signal: Price touches upper BB AND RSI > Overbought\n    if(currentPrice >= upperBand && rsiValue > RSIOverbought)\n    {\n        if(CountSellOrders() < 1)\n        {\n            OpenSellOrder();\n        }\n    }\n}\n\n//+------------------------------------------------------------------+\n//| Count open trades                                                |\n//+------------------------------------------------------------------+\nvoid CountOpenTrades()\n{\n    totalOrders = 0;\n    \n    for(int i = OrdersTotal() - 1; i >= 0; i--)\n    {\n        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))\n            continue;\n        \n        if(OrderSymbol() == Symbol() && OrderMagicNumber() == 0)\n        {\n            totalOrders++;\n        }\n    }\n}\n\n//+------------------------------------------------------------------+\n//| Count buy orders                                                 |\n//+------------------------------------------------------------------+\nint CountBuyOrders()\n{\n    int buyCount = 0;\n    \n    for(int i = OrdersTotal() - 1; i >= 0; i--)\n    {\n        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))\n            continue;\n        \n        if(OrderSymbol() == Symbol() && OrderType() == OP_BUY)\n        {\n            buyCount++;\n        }\n    }\n    \n    return buyCount;\n}\n\n//+------------------------------------------------------------------+\n//| Count sell orders                                                |\n//+------------------------------------------------------------------+\nint CountSellOrders()\n{\n    int sellCount = 0;\n    \n    for(int i = OrdersTotal() - 1; i >= 0; i--)\n    {\n        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))\n            continue;\n        \n        if(OrderSymbol() == Symbol() && OrderType() == OP_SELL)\n        {\n            sellCount++;\n        }\n    }\n    \n    return sellCount;\n}\n\n//+------------------------------------------------------------------+\n//| Open Buy Order                                                   |\n//+------------------------------------------------------------------+\nvoid OpenBuyOrder()\n{\n    double sl = Ask - (StopLoss * Point);\n    double tp = Ask + (TakeProfit * Point);\n    \n    int ticket = OrderSend(\n        Symbol(),           // Symbol\n        OP_BUY,            // Order type\n        LotSize,           // Volume\n        Ask,               // Price\n        10,                // Slippage\n        sl,                // Stop Loss\n        tp,                // Take Profit\n        eaComment,         // Comment\n        0,                 // Magic number\n        0,                 // Expiration\n        clrGreen           // Color\n    );\n    \n    if(ticket > 0)\n    {\n        Print("BUY Order opened: Ticket=", ticket, " | Price=", Ask, " | SL=", sl, " | TP=", tp);\n    }\n    else\n    {\n        Print("Error opening BUY order: ", GetLastError());\n    }\n}\n\n//+------------------------------------------------------------------+\n//| Open Sell Order                                                  |\n//+------------------------------------------------------------------+\nvoid OpenSellOrder()\n{\n    double sl = Bid + (StopLoss * Point);\n    double tp = Bid - (TakeProfit * Point);\n    \n    int ticket = OrderSend(\n        Symbol(),           // Symbol\n        OP_SELL,           // Order type\n        LotSize,           // Volume\n        Bid,               // Price\n        10,                // Slippage\n        sl,                // Stop Loss\n        tp,                // Take Profit\n        eaComment,         // Comment\n        0,                 // Magic number\n        0,                 // Expiration\n        clrRed             // Color\n    );\n    \n    if(ticket > 0)\n    {\n        Print("SELL Order opened: Ticket=", ticket, " | Price=", Bid, " | SL=", sl, " | TP=", tp);\n    }\n    else\n    {\n        Print("Error opening SELL order: ", GetLastError());\n    }\n}\n\n//+------------------------------------------------------------------+\n//| End of Expert Advisor                                            |\n//+------------------------------------------------------------------+\n
+//+------------------------------------------------------------------+
+//|                                              GoldTrendEA.mq5     |
+//|                          XAU/USD Day Trading with BB + RSI       |
+//|                                    Created 2026                  |
+//+------------------------------------------------------------------+
+#property copyright "GoldTrendEA"
+#property link      "https://github.com/pornpichit-ch/EABoT"
+#property version   "1.00"
+#property strict
+
+#include <Trade\Trade.mqh>
+
+//--- Input parameters
+input double LotSize       = 0.01;  // Lot size per order
+input int    MaxOpenTrades = 3;     // Maximum open trades
+input int    StopLoss      = 50;    // Stop Loss in pips
+input int    TakeProfit    = 50;    // Take Profit in pips
+
+// Bollinger Bands settings
+input int    BBPeriod    = 20;   // Bollinger Bands period
+input double BBDeviation = 2.0;  // Bollinger Bands deviation
+
+// RSI settings
+input int    RSIPeriod     = 14;  // RSI period
+input double RSIOverbought = 70;  // RSI Overbought level
+input double RSIOversold   = 30;  // RSI Oversold level
+
+//--- Global variables
+int    g_bbHandle  = INVALID_HANDLE;
+int    g_rsiHandle = INVALID_HANDLE;
+string g_eaComment = "GoldTrendEA";
+CTrade g_trade;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+    // Create indicator handles
+    g_bbHandle = iBands(_Symbol, PERIOD_CURRENT, BBPeriod, 0, BBDeviation, PRICE_CLOSE);
+    if (g_bbHandle == INVALID_HANDLE)
+    {
+        Print("Error creating Bollinger Bands handle: ", GetLastError());
+        return INIT_FAILED;
+    }
+
+    g_rsiHandle = iRSI(_Symbol, PERIOD_CURRENT, RSIPeriod, PRICE_CLOSE);
+    if (g_rsiHandle == INVALID_HANDLE)
+    {
+        Print("Error creating RSI handle: ", GetLastError());
+        return INIT_FAILED;
+    }
+
+    g_trade.SetExpertMagicNumber(12345);
+
+    Print("===== GoldTrendEA Initialized =====");
+    Print("Symbol: ",        _Symbol);
+    Print("Lot Size: ",      LotSize);
+    Print("Max Trades: ",    MaxOpenTrades);
+    Print("Stop Loss: ",     StopLoss,      " pips");
+    Print("Take Profit: ",   TakeProfit,    " pips");
+    Print("BB Period: ",     BBPeriod,      " | Deviation: ", BBDeviation);
+    Print("RSI Period: ",    RSIPeriod,     " | Overbought: ", RSIOverbought, " | Oversold: ", RSIOversold);
+
+    return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+    if (g_bbHandle  != INVALID_HANDLE) IndicatorRelease(g_bbHandle);
+    if (g_rsiHandle != INVALID_HANDLE) IndicatorRelease(g_rsiHandle);
+
+    Print("===== GoldTrendEA Deinitialized ===== Reason: ", reason);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+    // Only trade on new bar to avoid multiple signals per candle
+    static datetime lastBarTime = 0;
+    datetime currentBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+    if (currentBarTime == lastBarTime)
+        return;
+    lastBarTime = currentBarTime;
+
+    // Check if we can open new trades
+    if (CountOpenTrades() >= MaxOpenTrades)
+        return;
+
+    // Get indicator buffers (index 1 = previous closed bar)
+    double upperBand[1], middleBand[1], lowerBand[1], rsiValue[1];
+
+    if (CopyBuffer(g_bbHandle, 0, 1, 1, middleBand) < 1) return;  // 0 = Middle Band
+    if (CopyBuffer(g_bbHandle, 1, 1, 1, upperBand)  < 1) return;  // 1 = Upper Band
+    if (CopyBuffer(g_bbHandle, 2, 1, 1, lowerBand)  < 1) return;  // 2 = Lower Band
+    if (CopyBuffer(g_rsiHandle, 0,           1, 1, rsiValue)   < 1) return;
+
+    double closePrice = iClose(_Symbol, PERIOD_CURRENT, 1);
+
+    // Buy Signal: Price touches lower BB AND RSI is oversold
+    if (closePrice <= lowerBand[0] && rsiValue[0] < RSIOversold)
+    {
+        if (CountOrdersByType(ORDER_TYPE_BUY) < 1)
+            OpenBuyOrder();
+    }
+
+    // Sell Signal: Price touches upper BB AND RSI is overbought
+    if (closePrice >= upperBand[0] && rsiValue[0] > RSIOverbought)
+    {
+        if (CountOrdersByType(ORDER_TYPE_SELL) < 1)
+            OpenSellOrder();
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Count all open trades for this EA                                |
+//+------------------------------------------------------------------+
+int CountOpenTrades()
+{
+    int count = 0;
+    for (int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        ulong ticket = PositionGetTicket(i);
+        if (ticket == 0) continue;
+
+        if (PositionGetString(POSITION_SYMBOL)  == _Symbol &&
+            PositionGetInteger(POSITION_MAGIC)  == 12345)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+//+------------------------------------------------------------------+
+//| Count open orders by type (BUY or SELL)                          |
+//+------------------------------------------------------------------+
+int CountOrdersByType(ENUM_ORDER_TYPE orderType)
+{
+    int count = 0;
+    for (int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        ulong ticket = PositionGetTicket(i);
+        if (ticket == 0) continue;
+
+        if (PositionGetString(POSITION_SYMBOL)         == _Symbol   &&
+            PositionGetInteger(POSITION_MAGIC)         == 12345     &&
+            (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == (ENUM_POSITION_TYPE)orderType)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+//+------------------------------------------------------------------+
+//| Open Buy Order                                                   |
+//+------------------------------------------------------------------+
+void OpenBuyOrder()
+{
+    double ask    = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    double sl     = ask - StopLoss  * point;
+    double tp     = ask + TakeProfit * point;
+
+    if (!g_trade.Buy(LotSize, _Symbol, ask, sl, tp, g_eaComment))
+    {
+        Print("Error opening BUY order: ", g_trade.ResultRetcode(), " - ", g_trade.ResultRetcodeDescription());
+    }
+    else
+    {
+        Print("BUY Order opened | Price=", ask, " | SL=", sl, " | TP=", tp);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Open Sell Order                                                  |
+//+------------------------------------------------------------------+
+void OpenSellOrder()
+{
+    double bid    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    double sl     = bid + StopLoss   * point;
+    double tp     = bid - TakeProfit * point;
+
+    if (!g_trade.Sell(LotSize, _Symbol, bid, sl, tp, g_eaComment))
+    {
+        Print("Error opening SELL order: ", g_trade.ResultRetcode(), " - ", g_trade.ResultRetcodeDescription());
+    }
+    else
+    {
+        Print("SELL Order opened | Price=", bid, " | SL=", sl, " | TP=", tp);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| End of Expert Advisor                                            |
+//+------------------------------------------------------------------+
